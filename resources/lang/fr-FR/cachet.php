@@ -77,7 +77,7 @@ return [
 
     // Subscriber
     'subscriber' => [
-        'subscribe'           => 'L\'abonnement vous permet de recevoir des notifications, que ce soit en cas de dysfonctionnement d\’un service important pour vous ou en cas d’opération planifiée',
+        'subscribe'           => 'L\'abonnement vous permet de recevoir des notifications, que ce soit en cas de dysfonctionnement d’un service important pour vous ou en cas d’opération planifiée',
         'unsubscribe'         => 'Se désabonner',
         'button'              => 'S\'abonner',
         'manage_subscription' => 'Gérer l\'abonnement',
