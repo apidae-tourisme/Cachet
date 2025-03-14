@@ -26,6 +26,7 @@ use GrahamCampbell\Binput\Facades\Binput;
 use GrahamCampbell\Markdown\Facades\Markdown;
 use Illuminate\Contracts\Auth\Guard;
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\URL;
@@ -75,11 +76,34 @@ class SubscribeController extends Controller
      *
      * @return \Illuminate\View\View
      */
-    public function postSubscribe()
+    public function postSubscribe(Request $request)
     {
         $email = Binput::get('email');
         $subscriptions = Binput::get('subscriptions');
         $verified = app(Repository::class)->get('setting.skip_subscriber_verification');
+
+        // Récupérer le token reCAPTCHA
+        $recaptchaToken = Binput::get('g-recaptcha-response');
+
+        if (!$recaptchaToken) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['captcha' => trans('validation.recaptcha_missing')]);
+        }
+
+        // Vérifier le token reCAPTCHA via file_get_contents()
+        $secret = env('GOOGLE_CAPTCHA_SECRET');
+        $remoteIp = $request->ip();
+        $url = "https://www.google.com/recaptcha/api/siteverify?secret={$secret}&response={$recaptchaToken}&remoteip={$remoteIp}";
+
+        $response = file_get_contents($url);
+        $body = json_decode($response, true);
+
+        if (!$body['success']) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['captcha' => trans('validation.recaptcha_failed')]);
+        }
 
         try {
             $subscription = execute(new SubscribeSubscriberCommand($email, $verified));
@@ -92,6 +116,7 @@ class SubscribeController extends Controller
 
         // Send the subscriber a link to manage their subscription.
         $subscription->notify(new ManageSubscriptionNotification());
+
 
         return redirect()->back()->withSuccess(
             sprintf(

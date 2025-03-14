@@ -252,4 +252,6 @@ return [
 
     ],
 
+    'name' => env('GOOGLE_CAPTCHA_SITE', ''),
+
 ];

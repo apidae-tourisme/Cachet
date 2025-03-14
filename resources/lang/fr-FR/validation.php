@@ -119,4 +119,7 @@ return [
 
     'attributes' => [],
 
+    'recaptcha_missing' => 'Captcha absent',
+    'recaptcha_failed' => 'Captcha invalide',
+
 ];
