@@ -1,0 +1,83 @@
+# Environnement local de validation (voir docs dans le README de migration)
+# - app :     http://localhost:8091
+# - mailhog : http://localhost:8025 (tous les mails sortants y sont capturés)
+#
+# Configuration locale : copier .env.example en .env (gitignoré) et le
+# compléter — docker compose le lit automatiquement (APP_KEY de prod pour
+# tester sur données réelles, port MailHog...). Les clés reCAPTCHA par défaut
+# sont les clés de test publiques de Google (la vérification passe toujours).
+
+x-cachet-env: &cachet-env
+  APP_ENV: local
+  # L'image est un build de production (--no-dev) : APP_DEBUG=true casserait
+  # l'app (le provider Debugbar, paquet dev, est enregistré si APP_DEBUG)
+  APP_DEBUG: "false"
+  APP_URL: http://localhost:8091
+  APP_TIMEZONE: UTC
+  APP_KEY: ${APP_KEY:-base64:uRyLmnmB7+nhN9/T9Wbu099asOoy0XITlsLbQAcEdsQ=}
+  LOG_CHANNEL: stderr
+  DB_DRIVER: pgsql
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_DATABASE: status
+  DB_USERNAME: status
+  DB_PASSWORD: status
+  CACHE_DRIVER: file
+  SESSION_DRIVER: database
+  QUEUE_DRIVER: database
+  MAIL_DRIVER: smtp
+  MAIL_HOST: mailhog
+  MAIL_PORT: "1025"
+  # Sans cette valeur, Laravel tente du TLS (défaut) que MailHog ne supporte pas
+  MAIL_ENCRYPTION: "null"
+  MAIL_ADDRESS: status@apidae-tourisme.com
+  MAIL_NAME: "Apidae Notification"
+  CACHET_BEACON: "false"
+  CACHET_AUTO_TWITTER: "false"
+  GOOGLE_CAPTCHA_SITE: ${GOOGLE_CAPTCHA_SITE:-6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI}
+  GOOGLE_CAPTCHA_SECRET: ${GOOGLE_CAPTCHA_SECRET:-6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe}
+  TRUSTED_PROXIES: "*"
+
+services:
+  app:
+    build: .
+    image: apidae-status:local
+    ports:
+      - "8091:8080"
+    environment: *cachet-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    image: apidae-status:local
+    build: .
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--timeout=60"]
+    environment: *cachet-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: status
+      POSTGRES_USER: status
+      POSTGRES_PASSWORD: status
+    volumes:
+      # postgres:18+ : le montage se fait sur /var/lib/postgresql (et non .../data)
+      - dbdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U status -d status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      # UI web — surchargez MAILHOG_UI_PORT si 8025 est déjà pris sur votre poste
+      - "${MAILHOG_UI_PORT:-8025}:8025"
+
+volumes:
+  dbdata:
