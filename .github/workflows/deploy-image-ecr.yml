@@ -1,0 +1,34 @@
+name: Deploy image to ECR
+run-name: "Deploy ${{ inputs.latest_version && 'latest' || inputs.version }} to ECR"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to deploy on ECR (without leading v)"
+        type: string
+        required: false
+      latest_version:
+        description: "Build only the latest tag (ignore version input)"
+        type: boolean
+        required: true
+        default: false
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: false
+      latest_version:
+        type: boolean
+        required: true
+
+jobs:
+  deploy:
+    uses: apidae-tourisme/apidae-github-actions/.github/workflows/deploy-image-ecr.yml@main
+    with:
+      version: ${{ inputs.version }}
+      latest_version: ${{ inputs.latest_version }}
+      ecr_repository: apidae-cr-status
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

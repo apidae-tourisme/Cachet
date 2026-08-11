@@ -13,6 +13,7 @@ namespace CachetHQ\Cachet\Notifications\Incident;
 
 use CachetHQ\Cachet\Models\Incident;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Messages\NexmoMessage;
 use Illuminate\Notifications\Messages\SlackMessage;
@@ -26,7 +27,7 @@ use Illuminate\Support\Facades\URL;
  *
  * @author James Brooks <james@alt-three.com>
  */
-class NewIncidentNotification extends Notification
+class NewIncidentNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
