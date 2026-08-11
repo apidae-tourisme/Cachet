@@ -1,6 +1,10 @@
 name: Deploy image to ECR
 run-name: "Deploy ${{ inputs.latest_version && 'latest' || inputs.version }} to ECR"
 
+# Build autonome : le workflow partagé apidae-github-actions est dans un repo
+# privé, inaccessible depuis ce repo public (limitation GitHub des reusable
+# workflows). Logique répliquée à l'identique.
+
 on:
   workflow_dispatch:
     inputs:
@@ -13,22 +17,63 @@ on:
         type: boolean
         required: true
         default: false
-  workflow_call:
-    inputs:
-      version:
-        type: string
-        required: false
-      latest_version:
-        type: boolean
-        required: true
+
+env:
+  ECR_REPOSITORY: apidae-cr-status
+  AWS_REGION: eu-west-3
 
 jobs:
-  deploy:
-    uses: apidae-tourisme/apidae-github-actions/.github/workflows/deploy-image-ecr.yml@main
-    with:
-      version: ${{ inputs.version }}
-      latest_version: ${{ inputs.latest_version }}
-      ecr_repository: apidae-cr-status
-    secrets:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  build:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        shell: bash
+        run: |
+          if [[ "${{ inputs.latest_version }}" == "false" && -z "${{ inputs.version }}" ]]; then
+            echo "Version is required when latest_version is false"
+            exit 1
+          fi
+
+      - name: Checkout latest
+        if: inputs.latest_version == true
+        uses: actions/checkout@v5
+
+      - name: Checkout version
+        if: inputs.latest_version == false
+        uses: actions/checkout@v5
+        with:
+          ref: v${{ inputs.version }}
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: |
+            image=moby/buildkit:buildx-stable-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          mask-password: "true"
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, inputs.latest_version && 'latest' || inputs.version) }}
+          cache-from: ${{ format('type=registry,ref={0}/{1}:buildcache', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY) }}
+          cache-to: ${{ format('type=registry,ref={0}/{1}:buildcache,mode=max', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY) }}
+          provenance: false
+          sbom: false
