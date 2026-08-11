@@ -57,18 +57,36 @@ if [ -z "$DUMP_FILE" ]; then
 fi
 
 # --- Port-forward vers le cluster CNPG ---
-kubectl port-forward -n "$PG_NAMESPACE" "svc/$PG_SERVICE" "$LOCAL_PORT:5432" >/dev/null 2>&1 &
-PF_PID=$!
+# kubectl port-forward peut mourir dès qu'une connexion se ferme : on vérifie
+# qu'il est vivant avant chaque commande SQL et on le relance au besoin.
+PF_PID=""
+port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$LOCAL_PORT") 2>/dev/null && exec 3>&-; }
+start_pf() {
+    kubectl port-forward -n "$PG_NAMESPACE" "svc/$PG_SERVICE" "$LOCAL_PORT:5432" >/dev/null 2>&1 &
+    PF_PID=$!
+    for _ in $(seq 1 20); do
+        port_open && return 0
+        kill -0 "$PF_PID" 2>/dev/null || break
+        sleep 0.5
+    done
+    echo "!! port-forward vers svc/$PG_SERVICE impossible"; exit 1
+}
+ensure_pf() {
+    kill -0 "$PF_PID" 2>/dev/null && port_open && return 0
+    kill "$PF_PID" 2>/dev/null || true
+    start_pf
+}
 cleanup() {
     kill "$PF_PID" 2>/dev/null || true
     [ "${CLEAN_DUMP:-0}" = 1 ] && rm -f "$DUMP_FILE"
 }
 trap cleanup EXIT
-sleep 3
+start_pf
 
 # psql/pg_restore via l'image postgres:18 (alignée sur le serveur CNPG),
 # en réseau hôte pour atteindre le port-forward local.
 run_psql() {
+    ensure_pf
     docker run --rm -i --network host -e PGPASSWORD="$DB_PWD" postgres:18 \
         psql -q -h 127.0.0.1 -p "$LOCAL_PORT" -U status -d status "$@"
 }
@@ -77,6 +95,7 @@ echo ">> Réinitialisation du schéma public..."
 run_psql -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
 
 echo ">> Restauration du dump..."
+ensure_pf
 docker run --rm -i --network host -e PGPASSWORD="$DB_PWD" postgres:18 \
     pg_restore --no-owner --role=status -h 127.0.0.1 -p "$LOCAL_PORT" -U status -d status < "$DUMP_FILE"
 
