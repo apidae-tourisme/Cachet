@@ -99,6 +99,13 @@ ensure_pf
 docker run --rm -i --network host -e PGPASSWORD="$DB_PWD" postgres:18 \
     pg_restore --no-owner --role=status -h 127.0.0.1 -p "$LOCAL_PORT" -U status -d status < "$DUMP_FILE"
 
+echo ">> Patch schéma failed_jobs (migration Cachet 2015 incomplète pour Laravel 5.5)..."
+# Laravel 5.5 écrit une colonne "exception" absente de la migration d'origine,
+# et compte sur un défaut pour failed_at : sans ce patch, l'enregistrement d'un
+# échec de job plante lui-même (l'échec initial devient invisible).
+run_psql -c 'ALTER TABLE failed_jobs ADD COLUMN IF NOT EXISTS exception text;'
+run_psql -c 'ALTER TABLE failed_jobs ALTER COLUMN failed_at SET DEFAULT CURRENT_TIMESTAMP;'
+
 echo ">> Assainissement (jobs, failed_jobs, sessions + PURGE DES ABONNÉS)..."
 # NB : pas de contrainte FK entre subscriptions et subscribers (migrations
 # Laravel sans FK), un TRUNCATE ... CASCADE ne suffirait pas — on liste les

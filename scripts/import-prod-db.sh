@@ -47,6 +47,11 @@ docker compose exec -T db psql -q -U status -d status \
 echo ">> Restauration du dump..."
 docker compose exec -T db pg_restore --no-owner --role=status -U status -d status < "$DUMP_FILE"
 
+echo ">> Patch schéma failed_jobs (migration Cachet 2015 incomplète pour Laravel 5.5)..."
+docker compose exec -T db psql -q -U status -d status \
+    -c 'ALTER TABLE failed_jobs ADD COLUMN IF NOT EXISTS exception text;' \
+    -c 'ALTER TABLE failed_jobs ALTER COLUMN failed_at SET DEFAULT CURRENT_TIMESTAMP;'
+
 echo ">> Assainissement (jobs, failed_jobs, sessions)..."
 docker compose exec -T db psql -q -U status -d status \
     -c 'TRUNCATE TABLE jobs, failed_jobs, sessions;'
